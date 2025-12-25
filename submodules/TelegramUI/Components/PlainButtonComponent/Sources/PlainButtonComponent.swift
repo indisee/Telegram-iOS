@@ -20,8 +20,9 @@ public final class PlainButtonComponent: Component {
     public let animateAlpha: Bool
     public let animateScale: Bool
     public let animateContents: Bool
+    public let highlightChanged: ((Bool) -> Void)?
     public let tag: AnyObject?
-    
+
     public init(
         content: AnyComponent<Empty>,
         background: AnyComponent<Empty>? = nil,
@@ -33,6 +34,7 @@ public final class PlainButtonComponent: Component {
         animateAlpha: Bool = true,
         animateScale: Bool = true,
         animateContents: Bool = true,
+        highlightChanged: ((Bool) -> Void)? = nil,
         tag: AnyObject? = nil
     ) {
         self.content = content
@@ -45,6 +47,7 @@ public final class PlainButtonComponent: Component {
         self.animateAlpha = animateAlpha
         self.animateScale = animateScale
         self.animateContents = animateContents
+        self.highlightChanged = highlightChanged
         self.tag = tag
     }
     
@@ -74,6 +77,9 @@ public final class PlainButtonComponent: Component {
             return false
         }
         if lhs.animateContents != rhs.animateContents {
+            return false
+        }
+        if (lhs.highlightChanged == nil) != (rhs.highlightChanged == nil) {
             return false
         }
         if lhs.tag !== rhs.tag {
@@ -116,12 +122,14 @@ public final class PlainButtonComponent: Component {
             
             self.highligthedChanged = { [weak self] highlighted in
                 if let self, self.bounds.width > 0.0 {
+                    self.component?.highlightChanged?(highlighted)
+
                     let animateAlpha = self.component?.animateAlpha ?? true
                     let animateScale = self.component?.animateScale ?? true
-                    
+
                     let topScale: CGFloat = (self.bounds.width - 8.0) / self.bounds.width
                     let maxScale: CGFloat = (self.bounds.width + 2.0) / self.bounds.width
-                    
+
                     if highlighted {
                         self.contentContainer.layer.removeAnimation(forKey: "opacity")
                         self.contentContainer.layer.removeAnimation(forKey: "transform.scale")

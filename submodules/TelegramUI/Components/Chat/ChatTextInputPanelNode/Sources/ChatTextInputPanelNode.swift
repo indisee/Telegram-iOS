@@ -47,6 +47,7 @@ import TextNodeWithEntities
 import DeviceModel
 import PhotoResources
 import GlassBackgroundComponent
+import GlassImitation
 import ComponentDisplayAdapters
 import ChatInputAccessoryPanel
 import ChatInputAutocompletePanel
@@ -58,6 +59,9 @@ import ChatRecordingViewOnceButtonNode
 import ChatRecordingPreviewInputPanelNode
 import ChatInputContextPanelNode
 import RasterizedCompositionComponent
+import GlassImitation
+
+//TODO: glass -- mic/video btn stuck in the "highlighted" state 
 
 private let counterFont = Font.with(size: 14.0, design: .regular, traits: [.monospacedNumbers])
 
@@ -230,6 +234,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     public var contextPlaceholderNode: TextNode?
     public var slowmodePlaceholderNode: ChatTextInputSlowmodePlaceholderNode?
     private let textInputContainerBackgroundView: GlassBackgroundView
+    private var glassViewCoordinator: GlassViewRegistry?
     private let accessoryPanelContainer: UIView
     public let textInputNodeClippingContainer: ASDisplayNode
     public let textInputSeparator: GlassBackgroundView.ContentColorView
@@ -268,6 +273,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
     private var commentsButtonContentsLayer: RasterizedCompositionImageLayer?
     private var commentsButtonDotLayer: RasterizedCompositionImageLayer?
     private var attachmentButtonUnseenIcon: UIImageView?
+    private var attachmentButtonWasOffScreen: Bool = true
     public let attachmentButtonDisabledNode: HighlightableButtonNode
     
     public var attachmentImageNode: TransformImageNode?
@@ -629,8 +635,9 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         
         self.glassBackgroundContainer = GlassBackgroundContainerView()
         
-        self.textInputContainerBackgroundView = GlassBackgroundView(frame: CGRect())
-        
+        self.textInputContainerBackgroundView = GlassBackgroundView(frame: CGRect(), useMetalGlass: true)
+        self.textInputContainerBackgroundView.highlightScale = 1.05
+
         self.accessoryPanelContainer = UIView()
         self.accessoryPanelContainer.clipsToBounds = true
         
@@ -687,8 +694,8 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         self.attachmentButton.accessibilityLabel = presentationInterfaceState.strings.VoiceOver_AttachMedia
         self.attachmentButton.accessibilityTraits = [.button]
         self.attachmentButton.isAccessibilityElement = true
-        
-        self.attachmentButtonBackground = GlassBackgroundView(frame: CGRect())
+
+        self.attachmentButtonBackground = GlassBackgroundView(frame: CGRect(), useMetalGlass: true)
         self.attachmentButtonBackground.contentView.addSubview(self.attachmentButton)
         
         self.attachmentButtonIcon = GlassBackgroundView.ContentImageView()
@@ -807,17 +814,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         
         self.attachmentButton.addTarget(self, action: #selector(self.attachmentButtonPressed), for: .touchUpInside)
         self.attachmentButton.highligthedChanged = { [weak self] highlighted in
-            if let self {
-                if highlighted {
-                    self.attachmentButtonIcon.layer.removeAnimation(forKey: "opacity")
-                    self.attachmentButtonIcon.alpha = 0.4
-                    self.attachmentButtonIcon.layer.allowsGroupOpacity = true
-                } else {
-                    self.attachmentButtonIcon.alpha = 1.0
-                    self.attachmentButtonIcon.layer.animateAlpha(from: 0.4, to: 1.0, duration: 0.2)
-                    self.attachmentButtonIcon.layer.allowsGroupOpacity = false
-                }
-            }
+            self?.attachmentButtonBackground.setHighlighted(highlighted)
         }
         self.attachmentButtonDisabledNode.addTarget(self, action: #selector(self.attachmentButtonPressed), forControlEvents: .touchUpInside)
   
@@ -894,7 +891,13 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                 interfaceInteraction.switchMediaRecordingMode()
             }
         }
-        
+        self.mediaActionButtons.micButton.highlightChanged = { [weak self] highlighted in
+            self?.mediaActionButtons.micButtonBackgroundView.setHighlighted(highlighted)
+        }
+        self.sendActionButtons.micButton.highlightChanged = { [weak self] highlighted in
+            self?.sendActionButtons.micButtonBackgroundView.setHighlighted(highlighted)
+        }
+
         self.sendActionButtons.sendButton.addTarget(self, action: #selector(self.sendButtonPressed), forControlEvents: .touchUpInside)
         self.sendActionButtons.sendContainerNode.alpha = 0.0
         self.sendActionButtons.updateAccessibility()
@@ -954,6 +957,19 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         self.textInputContainerBackgroundView.maskContentView.addSubview(self.searchLayoutClearButtonIcon.tintMask)
         
         self.textInputBackgroundNode.clipsToBounds = true
+
+        // Add highlight gesture to the glass container (always receives touches)
+        let highlightRecognizer = TouchDownGestureRecognizer(target: nil, action: nil)
+        highlightRecognizer.touchBegan = { [weak self] in
+            self?.textInputContainerBackgroundView.setHighlighted(true)
+        }
+        highlightRecognizer.touchEnded = { [weak self] in
+            self?.textInputContainerBackgroundView.setHighlighted(false)
+        }
+        highlightRecognizer.cancelsTouchesInView = false
+        highlightRecognizer.delaysTouchesEnded = false
+        self.textInputContainerBackgroundView.addGestureRecognizer(highlightRecognizer)
+
         let recognizer = TouchDownGestureRecognizer(target: self, action: #selector(self.textInputBackgroundViewTap(_:)))
         recognizer.touchDown = { [weak self] in
             if let strongSelf = self {
@@ -961,12 +977,12 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
                     guard let controller = (strongSelf.interfaceInteraction?.chatController() as? ChatController) else {
                         return
                     }
-                    
+
                     if let boostsToUnrestrict = strongSelf.presentationInterfaceState?.boostsToUnrestrict, boostsToUnrestrict > 0 {
                         strongSelf.interfaceInteraction?.openBoostToUnrestrict()
                         return
                     }
-                    
+
                     strongSelf.interfaceInteraction?.displayUndo(.universal(animation: "premium_unlock", scale: 1.0, colors: ["__allcolors__": UIColor(white: 1.0, alpha: 1.0)], title: nil, text: controller.restrictedSendingContentsText(), customUndoText: nil, timeout: nil))
                 } else {
                     strongSelf.ensureFocused()
@@ -977,7 +993,7 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             guard let strongSelf = self, let textInputNode = strongSelf.textInputNode else {
                 return true
             }
-            
+
             if textInputNode.textView.isFirstResponder {
                 return true
             } else {
@@ -2245,14 +2261,29 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
             leftButtonsWidth += settingsButtonSize.width + 6.0
         }
         
+        var attachmentButtonOffScreen = false
         if !displayMediaButton || mediaRecordingState != nil {
             attachmentButtonX = -8.0 - leftButtonsWidth
+            attachmentButtonOffScreen = true
         } else if let customLeftAction = self.customLeftAction, case let .toggleExpanded(isVisible, _, _) = customLeftAction, !isVisible {
             attachmentButtonX = -8.0 - leftButtonsWidth
+            attachmentButtonOffScreen = true
         } else if let customLeftAction = self.customLeftAction, case .empty = customLeftAction {
             attachmentButtonX = -8.0 - leftButtonsWidth
+            attachmentButtonOffScreen = true
         }
-        
+
+        // Disable merge participation when off-screen or transitioning between on/off screen
+        let isTransitioningVisibility = attachmentButtonOffScreen != self.attachmentButtonWasOffScreen && transition.isAnimated
+        if isTransitioningVisibility {
+            // Disable merge during the transition
+            self.attachmentButtonBackground.setParticipatesInMerge(false)
+        } else {
+            // Enable merge only when on-screen and not transitioning
+            self.attachmentButtonBackground.setParticipatesInMerge(!attachmentButtonOffScreen)
+        }
+        self.attachmentButtonWasOffScreen = attachmentButtonOffScreen
+
         self.mediaActionButtons.micButton.updateMode(mode: interfaceState.interfaceState.mediaRecordingMode, animated: transition.isAnimated)
         
         self.updateActionButtons(hasText: inputHasText, transition: transition)
@@ -3277,7 +3308,23 @@ public class ChatTextInputPanelNode: ChatInputPanelNode, ASEditableTextNodeDeleg
         let attachmentButtonFrame = CGRect(origin: CGPoint(x: attachmentButtonX, y: textInputFrame.maxY - 40.0), size: CGSize(width: 40.0, height: 40.0))
         attachmentButtonX += 40.0 + 6.0
         self.attachmentButtonBackground.update(size: attachmentButtonFrame.size, cornerRadius: attachmentButtonFrame.height * 0.5, isDark: interfaceState.theme.overallDarkAppearance, tintColor: .init(kind: .panel, color: interfaceState.theme.chat.inputPanel.inputBackgroundColor.withMultipliedAlpha(0.7)), isInteractive: true, transition: ComponentTransition(transition))
-        
+        if let chatController = self.interfaceInteraction?.chatController() as? ChatController {
+            let textureSourceView = chatController.contentContainerNode.view
+
+            if self.glassViewCoordinator == nil {
+                self.glassViewCoordinator = GlassViewRegistry(parentView: textureSourceView)
+            }
+
+            self.textInputContainerBackgroundView.setMetalGlassTextureSource(textureSourceView)
+            self.textInputContainerBackgroundView.setMetalGlassCoordinator(self.glassViewCoordinator)
+
+            self.attachmentButtonBackground.setMetalGlassTextureSource(textureSourceView)
+            self.attachmentButtonBackground.setMetalGlassCoordinator(self.glassViewCoordinator)
+
+            self.mediaActionButtons.micButtonBackgroundView.setMetalGlassTextureSource(textureSourceView)
+            self.mediaActionButtons.micButtonBackgroundView.setMetalGlassCoordinator(self.glassViewCoordinator)
+        }
+
         transition.updateFrame(layer: self.attachmentButtonBackground.layer, frame: attachmentButtonFrame)
         transition.updateFrame(layer: self.attachmentButton.layer, frame: CGRect(origin: CGPoint(), size: attachmentButtonFrame.size))
         transition.updateFrame(node: self.attachmentButtonDisabledNode, frame: self.attachmentButtonBackground.frame)

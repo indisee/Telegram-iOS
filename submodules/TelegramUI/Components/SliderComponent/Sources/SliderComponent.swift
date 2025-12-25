@@ -5,6 +5,7 @@ import AsyncDisplayKit
 import TelegramPresentationData
 import LegacyComponents
 import ComponentFlow
+import GlassImitation
 
 public final class SliderComponent: Component {
     public final class Discrete: Equatable {
@@ -124,29 +125,171 @@ public final class SliderComponent: Component {
     public final class View: UIView {
         private var nativeSliderView: SliderView?
         private var sliderView: TGPhotoEditorSliderView?
-        
+
         private var component: SliderComponent?
         private weak var state: EmptyComponentState?
-        
+
+        private var glass: GlassView?
+        private let animationTime: Double = 0.3
+        private let knobWidthRatio: CGFloat = 1.5
+        private var animationWorkItems: [DispatchWorkItem] = []
+
+        private var useGlass: Bool {
+            if #available(iOS 26.0, *) {
+                return false
+            }
+            return true
+        }
+
+        private func cancelPendingAnimations() {
+            animationWorkItems.forEach { $0.cancel() }
+            animationWorkItems.removeAll()
+        }
+
         public var hitTestTarget: UIView? {
             return self.sliderView
         }
-        
+
         override public init(frame: CGRect) {
             super.init(frame: frame)
+
+            if #unavailable(iOS 26.0) {
+                let glass = GlassView(preset: .sliderGlass, alwaysLiquid: false)
+                glass.isHidden = true
+                glass.isUserInteractionEnabled = false
+                self.addSubview(glass)
+                self.glass = glass
+            }
         }
-        
+
         required public init?(coder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
         }
-                
+
+        public override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            if let superview = superview, let glass = self.glass, glass.textureSourceView == nil {
+                glass.textureSourceView = superview
+            }
+        }
+
+        private func showGlass() {
+            guard let glass = self.glass, let sliderView = self.sliderView, let knobView = sliderView.knobView else { return }
+
+            cancelPendingAnimations()
+
+            let scaleUpDuration = 0.12
+
+            let knobHeight = knobView.bounds.height
+            let knobSize = CGSize(width: knobHeight * self.knobWidthRatio, height: knobHeight)
+            let glassSize = CGSize(width: knobSize.width * 1.02, height: knobSize.height * 1.02)
+
+            let scaleX = knobSize.width / glassSize.width
+            let scaleY = knobSize.height / glassSize.height
+
+            glass.bounds = CGRect(origin: .zero, size: glassSize)
+            glass.center = self.convert(knobView.center, from: sliderView)
+            glass.viewsToHideDuringCapture = [knobView, glass]
+            glass.parameters = glass.parameters.withCornerRadius(Float(knobHeight / 2.0))
+            self.bringSubviewToFront(glass)
+
+            let currentKnobAlpha = knobView.layer.presentation()?.opacity ?? Float(knobView.alpha)
+            let currentKnobTransform = knobView.layer.presentation()?.affineTransform() ?? knobView.transform
+            let currentGlassAlpha = glass.layer.presentation()?.opacity ?? Float(glass.alpha)
+            let currentGlassTransform = glass.layer.presentation()?.affineTransform() ?? glass.transform
+
+            knobView.layer.removeAllAnimations()
+            glass.layer.removeAllAnimations()
+
+            knobView.alpha = CGFloat(currentKnobAlpha)
+            knobView.transform = currentKnobTransform
+
+            if glass.isHidden {
+                glass.transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+                glass.alpha = 0
+                glass.isHidden = false
+                glass.refreshTexture()
+                glass.startLiveAnimating()
+            } else {
+                glass.alpha = CGFloat(currentGlassAlpha)
+                glass.transform = currentGlassTransform
+            }
+
+            UIView.animate(withDuration: scaleUpDuration,
+                           delay: 0,
+                           options: [.curveEaseOut, .allowUserInteraction]) {
+                knobView.alpha = 0
+                glass.alpha = 1
+                glass.transform = .identity
+            }
+        }
+
+        private func hideGlass(animated: Bool = true) {
+            guard let glass = self.glass, !glass.isHidden else { return }
+            guard let sliderView = self.sliderView, let knobView = sliderView.knobView else { return }
+
+            cancelPendingAnimations()
+
+            knobView.layer.removeAllAnimations()
+            glass.layer.removeAllAnimations()
+
+            if !animated {
+                glass.alpha = 0
+                glass.isHidden = true
+                glass.stopLiveAnimating()
+                glass.transform = .identity
+                knobView.alpha = 1
+                knobView.transform = .identity
+                return
+            }
+
+            let currentGlassAlpha = glass.layer.presentation()?.opacity ?? Float(glass.alpha)
+            let currentGlassTransform = glass.layer.presentation()?.affineTransform() ?? glass.transform
+
+            glass.alpha = CGFloat(currentGlassAlpha)
+            glass.transform = currentGlassTransform
+
+            // Phase 1: Show knob scaled up, start shrinking both glass and knob together
+            knobView.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+            knobView.alpha = 1
+
+            UIView.animate(withDuration: 0.15,
+                           delay: 0,
+                           options: [.curveEaseIn, .allowUserInteraction]) {
+                glass.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+                glass.alpha = 0
+                knobView.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            } completion: { [weak knobView, weak glass] finished in
+                guard let glass = glass else { return }
+
+                glass.alpha = 0
+                glass.isHidden = true
+                glass.stopLiveAnimating()
+                glass.transform = .identity
+
+                guard finished, let knobView = knobView else { return }
+
+                // Phase 2: Spring knob back to normal
+                UIView.animate(withDuration: 0.2,
+                               delay: 0,
+                               usingSpringWithDamping: 0.8,
+                               initialSpringVelocity: 0.5,
+                               options: [.allowUserInteraction]) {
+                    knobView.transform = .identity
+                }
+            }
+        }
+
+        private func updateGlassPosition() {
+            guard let glass = self.glass, !glass.isHidden, let sliderView = self.sliderView, let knobView = sliderView.knobView else { return }
+            glass.center = self.convert(knobView.center, from: sliderView)
+        }
+
         public func cancelGestures() {
             if let sliderView = self.sliderView, let gestureRecognizers = sliderView.gestureRecognizers {
                 for gestureRecognizer in gestureRecognizers {
-                    if gestureRecognizer.isEnabled {
-                        gestureRecognizer.isEnabled = false
-                        gestureRecognizer.isEnabled = true
-                    }
+                    gestureRecognizer.isEnabled = false
+                    gestureRecognizer.isEnabled = true
                 }
             }
         }
@@ -191,24 +334,8 @@ public final class SliderComponent: Component {
                 
                 transition.setFrame(view: sliderView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: CGSize(width: availableSize.width, height: 44.0)))
             } else {
-                var internalIsTrackingUpdated: ((Bool) -> Void)?
-                if let isTrackingUpdated = component.isTrackingUpdated {
-                    internalIsTrackingUpdated = { [weak self] isTracking in
-                        if let self {
-                            if !"".isEmpty {
-                                if isTracking {
-                                    self.sliderView?.bordered = true
-                                } else {
-                                    DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.1, execute: { [weak self] in
-                                        self?.sliderView?.bordered = false
-                                    })
-                                }
-                            }
-                        }
-                        isTrackingUpdated(isTracking)
-                    }
-                }
-                
+                let isTrackingUpdated = component.isTrackingUpdated
+
                 let sliderView: TGPhotoEditorSliderView
                 if let current = self.sliderView {
                     sliderView = current
@@ -242,7 +369,9 @@ public final class SliderComponent: Component {
                     sliderView.startColor = component.trackBackgroundColor
                     sliderView.trackColor = component.trackForegroundColor
                     if let knobSize = component.knobSize {
-                        sliderView.knobImage = generateImage(CGSize(width: 40.0, height: 40.0), rotatedContext: { size, context in
+                        let knobWidth = knobSize * 1.3
+                        let cornerRadius = knobSize / 2.0
+                        sliderView.knobImage = generateImage(CGSize(width: knobWidth + 12.0, height: knobSize + 12.0), rotatedContext: { size, context in
                             context.clear(CGRect(origin: CGPoint(), size: size))
                             context.setShadow(offset: CGSize(width: 0.0, height: -3.0), blur: 12.0, color: UIColor(white: 0.0, alpha: 0.25).cgColor)
                             if let knobColor = component.knobColor {
@@ -250,14 +379,22 @@ public final class SliderComponent: Component {
                             } else {
                                 context.setFillColor(UIColor.white.cgColor)
                             }
-                            context.fillEllipse(in: CGRect(origin: CGPoint(x: floor((size.width - knobSize) * 0.5), y: floor((size.width - knobSize) * 0.5)), size: CGSize(width: knobSize, height: knobSize)))
+                            let path = UIBezierPath(roundedRect: CGRect(origin: CGPoint(x: 6.0, y: 6.0), size: CGSize(width: knobWidth, height: knobSize)), cornerRadius: cornerRadius)
+                            context.addPath(path.cgPath)
+                            context.fillPath()
                         })
                     } else {
-                        sliderView.knobImage = generateImage(CGSize(width: 40.0, height: 40.0), rotatedContext: { size, context in
+                        let knobHeight: CGFloat = 22.0
+                        let knobWidth: CGFloat = knobHeight * self.knobWidthRatio
+                        let cornerRadius = knobHeight / 2.0
+                        sliderView.knobImage = generateImage(CGSize(width: knobWidth + 12.0, height: knobHeight + 12.0),
+                                                             rotatedContext: { size, context in
                             context.clear(CGRect(origin: CGPoint(), size: size))
                             context.setShadow(offset: CGSize(width: 0.0, height: -3.0), blur: 12.0, color: UIColor(white: 0.0, alpha: 0.25).cgColor)
                             context.setFillColor(UIColor.white.cgColor)
-                            context.fillEllipse(in: CGRect(origin: CGPoint(x: 6.0, y: 6.0), size: CGSize(width: 28.0, height: 28.0)))
+                            let path = UIBezierPath(roundedRect: CGRect(origin: CGPoint(x: 6.0, y: 6.0 + 1.0), size: CGSize(width: knobWidth, height: knobHeight)), cornerRadius: cornerRadius)
+                            context.addPath(path.cgPath)
+                            context.fillPath()
                         })
                     }
                     
@@ -288,21 +425,26 @@ public final class SliderComponent: Component {
                         sliderView.lowerBoundValue = 0.0
                     }
                 }
-                sliderView.interactionBegan = {
-                    internalIsTrackingUpdated?(true)
+                sliderView.interactionBegan = { [weak self] in
+                    self?.showGlass()
+                    isTrackingUpdated?(true)
                 }
-                sliderView.interactionEnded = {
-                    internalIsTrackingUpdated?(false)
+                sliderView.interactionEnded = { [weak self] in
+                    self?.hideGlass()
+                    isTrackingUpdated?(false)
                 }
                 
-                transition.setFrame(view: sliderView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: CGSize(width: availableSize.width, height: 44.0)))
-                sliderView.hitTestEdgeInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: 0.0, right: 0.0)
+                let sliderInset: CGFloat = 10.0 //hack for the size due to discrepancy in ios stuff
+                transition.setFrame(view: sliderView, frame: CGRect(origin: CGPoint(x: sliderInset, y: 0.0), size: CGSize(width: availableSize.width - sliderInset * 2.0, height: 44.0)))
+                sliderView.hitTestEdgeInsets = UIEdgeInsets(top: 0.0, left: -sliderInset, bottom: 0.0, right: -sliderInset)
             }
             
             return size
         }
         
         @objc private func sliderValueChanged() {
+            self.updateGlassPosition()
+
             guard let component = self.component else {
                 return
             }

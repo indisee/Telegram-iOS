@@ -4,6 +4,7 @@ import Display
 import TelegramPresentationData
 import ComponentFlow
 import GlassBackgroundComponent
+import GlassImitation
 import PlainButtonComponent
 import BundleIconComponent
 import MultilineTextComponent
@@ -80,18 +81,28 @@ public final class GlassControlGroupComponent: Component {
     public final class View: UIView {
         private let backgroundView: GlassBackgroundView
         private var itemViews: [AnyHashable: ComponentView<Empty>] = [:]
-        
+
         private var component: GlassControlGroupComponent?
         private weak var state: EmptyComponentState?
 
+        public var textureSourceView: UIView? {
+            didSet {
+                if self.textureSourceView !== oldValue {
+                    self.backgroundView.setMetalGlassTextureSource(self.textureSourceView)
+                    self.backgroundView.metalGlassView?.startLiveAnimating()
+                }
+            }
+        }
+
         override public init(frame: CGRect) {
-            self.backgroundView = GlassBackgroundView()
-            
+            self.backgroundView = GlassBackgroundView(frame: .zero, useMetalGlass: true)
+            self.backgroundView.highlightScale = 1.1
+
             super.init(frame: frame)
-            
+
             self.addSubview(self.backgroundView)
         }
-        
+
         required public init(coder aDecoder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
         }
@@ -171,7 +182,10 @@ public final class GlassControlGroupComponent: Component {
                         isEnabled: item.action != nil,
                         animateAlpha: false,
                         animateScale: false,
-                        animateContents: false
+                        animateContents: false,
+                        highlightChanged: { [weak self] highlighted in
+                            self?.backgroundView.setHighlighted(highlighted)
+                        }
                     )),
                     environment: {},
                     containerSize: CGSize(width: availableSize.width, height: availableSize.height)

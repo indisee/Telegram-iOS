@@ -61,13 +61,23 @@ public final class GlassControlPanelComponent: Component {
 
     public final class View: UIView {
         private let glassContainerView: GlassBackgroundContainerView
-        
+
         private var leftItemComponent: ComponentView<Empty>?
         private var centralItemComponent: ComponentView<Empty>?
         private var rightItemComponent: ComponentView<Empty>?
-        
+
         private var component: GlassControlPanelComponent?
         private weak var state: EmptyComponentState?
+
+        public var textureSourceView: UIView? {
+            didSet {
+                if self.textureSourceView !== oldValue {
+                    self.leftItemView?.textureSourceView = self.textureSourceView
+                    self.centerItemView?.textureSourceView = self.textureSourceView
+                    self.rightItemView?.textureSourceView = self.textureSourceView
+                }
+            }
+        }
 
         public var leftItemView: GlassControlGroupComponent.View? {
             return self.leftItemComponent?.view as? GlassControlGroupComponent.View
@@ -83,12 +93,12 @@ public final class GlassControlPanelComponent: Component {
 
         override public init(frame: CGRect) {
             self.glassContainerView = GlassBackgroundContainerView()
-            
+
             super.init(frame: frame)
-            
+
             self.addSubview(self.glassContainerView)
         }
-        
+
         required public init(coder aDecoder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
         }
@@ -265,7 +275,13 @@ public final class GlassControlPanelComponent: Component {
             
             transition.setFrame(view: self.glassContainerView, frame: CGRect(origin: CGPoint(), size: availableSize))
             self.glassContainerView.update(size: availableSize, isDark: component.theme.overallDarkAppearance, transition: transition)
-            
+
+            if let textureSourceView = self.textureSourceView {
+                self.leftItemView?.textureSourceView = textureSourceView
+                self.centerItemView?.textureSourceView = textureSourceView
+                self.rightItemView?.textureSourceView = textureSourceView
+            }
+
             return availableSize
         }
     }

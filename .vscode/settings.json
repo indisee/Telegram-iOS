@@ -23,4 +23,5 @@
         }
     },
     "swift.sourcekit-lsp.serverPath": "${workspaceFolder}/build-input/sourcekit-lsp",
+    "sweetpad.build.xcodeWorkspacePath": "Telegram/Telegram.xcodeproj/project.xcworkspace",
 }

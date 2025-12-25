@@ -261,7 +261,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var inputMediaNodeStateContext = ChatEntityKeyboardInputNode.StateContext()
         
     let navigateButtons: ChatHistoryNavigationButtons
-    
+
     private var ignoreUpdateHeight = false
     private var overrideUpdateTextInputHeightTransition: ContainedViewLayoutTransition?
     
@@ -2411,6 +2411,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         self.historyNode.scrollEnabled = !self.isScrollingLockedAtTop
         
+        self.navigateButtons.textureSourceView = self.historyNode.view
         let navigateButtonsSize = self.navigateButtons.updateLayout(transition: transition)
         var navigateButtonsFrame = CGRect(origin: CGPoint(x: layout.size.width - layout.safeInsets.right - navigateButtonsSize.width - 8.0, y: layout.size.height - containerInsets.bottom - inputPanelsHeight - navigateButtonsSize.height - 20.0), size: navigateButtonsSize)
         if containerInsets.bottom <= 32.0 {

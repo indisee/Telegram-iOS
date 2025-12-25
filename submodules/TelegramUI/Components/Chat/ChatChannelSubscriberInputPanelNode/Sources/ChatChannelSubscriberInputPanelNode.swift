@@ -532,12 +532,15 @@ public final class ChatChannelSubscriberInputPanelNode: ChatInputPanelNode {
             environment: {},
             containerSize: panelFrame.size
         )
-        if let panelView = self.panel.view {
+        if let panelView = self.panel.view as? GlassControlPanelComponent.View {
             if panelView.superview == nil {
                 self.panelContainer.addSubview(panelView)
             }
             transition.updateFrame(view: self.panelContainer, frame: panelFrame)
             transition.updateFrame(view: panelView, frame: CGRect(origin: CGPoint(), size: panelFrame.size))
+            if let chatController = self.interfaceInteraction?.chatController() as? ChatController {
+                panelView.textureSourceView = chatController.contentContainerNode.view
+            }
         }
         
         /*if self.presentationInterfaceState != interfaceState || force {

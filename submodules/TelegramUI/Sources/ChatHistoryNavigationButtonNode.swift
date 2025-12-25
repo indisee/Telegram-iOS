@@ -48,7 +48,16 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
     
     private var theme: PresentationTheme
     private let type: ChatHistoryNavigationButtonType
-    
+
+    var textureSourceView: UIView? {
+        didSet {
+            if self.textureSourceView !== oldValue {
+                self.backgroundView.setMetalGlassTextureSource(self.textureSourceView)
+                self.backgroundView.metalGlassView?.startLiveAnimating()
+            }
+        }
+    }
+
     init(theme: PresentationTheme, backgroundNode: WallpaperBackgroundNode, type: ChatHistoryNavigationButtonType) {
         self.theme = theme
         self.type = type
@@ -56,7 +65,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.containerNode = ContextExtractedContentContainingNode()
         self.buttonNode = HighlightTrackingButtonNode()
 
-        self.backgroundView = GlassBackgroundView()
+        self.backgroundView = GlassBackgroundView(frame: .zero, useMetalGlass: true)
         
         self.imageView = GlassBackgroundView.ContentImageView()
         switch type {
@@ -79,9 +88,13 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.badgeTextNode.reverseAnimationDirection = true
         
         super.init()
-        
+
         self.targetNodeForActivationProgress = self.buttonNode
-        
+
+        self.buttonNode.highligthedChanged = { [weak self] highlighted in
+            self?.backgroundView.setHighlighted(highlighted)
+        }
+
         self.addSubnode(self.containerNode)
         
         let size = CGSize(width: 40.0, height: 40.0)
@@ -105,7 +118,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         
         self.frame = CGRect(origin: CGPoint(), size: size)
     }
-    
+
     func updateTheme(theme: PresentationTheme, backgroundNode: WallpaperBackgroundNode) {
         if self.theme !== theme {
             self.theme = theme

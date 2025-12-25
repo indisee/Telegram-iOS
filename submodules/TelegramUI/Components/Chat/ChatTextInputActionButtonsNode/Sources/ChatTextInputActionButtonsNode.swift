@@ -137,7 +137,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
     public let micButtonBackgroundView: GlassBackgroundView
     public let micButtonTintMaskView: UIImageView
     public let micButton: ChatTextInputMediaRecordingButton
-    
+
     public let sendContainerNode: ASDisplayNode
     public let sendButtonBackgroundView: UIImageView
     private var sendButtonBackgroundEffectLayer: StarsParticleEffectLayer?
@@ -149,7 +149,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
     public let textNode: ImmediateAnimatedCountLabelNode
     
     public let expandMediaInputButton: HighlightTrackingButton
-    private let expandMediaInputButtonBackgroundView: GlassBackgroundView
+    public let expandMediaInputButtonBackgroundView: GlassBackgroundView
     private let expandMediaInputButtonIcon: GlassBackgroundView.ContentImageView
     
     private var effectBadgeView: EffectBadgeView?
@@ -180,7 +180,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
         let strings = presentationInterfaceState.strings
         self.strings = strings
         
-        self.micButtonBackgroundView = GlassBackgroundView()
+        self.micButtonBackgroundView = GlassBackgroundView(frame: .zero, useMetalGlass: true)
         self.maskContentView = UIView()
         
         self.micButtonTintMaskView = UIImageView()
@@ -191,7 +191,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
         
         self.sendContainerNode = ASDisplayNode()
         self.sendContainerNode.layer.allowsGroupOpacity = true
-        
+
         self.sendButtonBackgroundView = UIImageView()
         self.sendButtonBackgroundView.image = generateStretchableFilledCircleImage(diameter: 34.0, color: .white)?.withRenderingMode(.alwaysTemplate)
         self.sendButton = HighlightTrackingButtonNode(pointerStyle: nil)
@@ -200,7 +200,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
         self.textNode.isUserInteractionEnabled = false
         
         self.expandMediaInputButton = HighlightTrackingButton()
-        self.expandMediaInputButtonBackgroundView = GlassBackgroundView()
+        self.expandMediaInputButtonBackgroundView = GlassBackgroundView(frame: .zero, useMetalGlass: true)
         self.expandMediaInputButtonBackgroundView.isUserInteractionEnabled = false
         self.expandMediaInputButton.addSubview(self.expandMediaInputButtonBackgroundView)
         self.expandMediaInputButtonIcon = GlassBackgroundView.ContentImageView()
@@ -245,14 +245,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
         self.view.addSubview(self.expandMediaInputButton)
         
         self.expandMediaInputButton.highligthedChanged = { [weak self] highlighted in
-            guard let self else {
-                return
-            }
-            if highlighted {
-                self.expandMediaInputButton.layer.animateScale(from: 1.0, to: 0.75, duration: 0.4, removeOnCompletion: false)
-            } else if let presentationLayer = self.expandMediaInputButton.layer.presentation() {
-                self.expandMediaInputButton.layer.animateScale(from: CGFloat((presentationLayer.value(forKeyPath: "transform.scale.y") as? NSNumber)?.floatValue ?? 1.0), to: 1.0, duration: 0.25, removeOnCompletion: false)
-            }
+            self?.expandMediaInputButtonBackgroundView.setHighlighted(highlighted)
         }
     }
     
@@ -353,7 +346,7 @@ public final class ChatTextInputActionButtonsNode: ASDisplayNode, ChatSendMessag
         
         let sendButtonBackgroundFrame = CGRect(origin: CGPoint(), size: innerSize).insetBy(dx: 3.0, dy: 3.0)
         transition.updateFrame(view: self.sendButtonBackgroundView, frame: sendButtonBackgroundFrame)
-        
+
         if self.isSendDisabled {
             transition.updateTintColor(view: self.sendButtonBackgroundView, color: interfaceState.theme.chat.inputPanel.panelControlAccentColor.withMultiplied(hue: 1.0, saturation: 0.0, brightness: 0.5).withMultipliedAlpha(0.25))
         } else {

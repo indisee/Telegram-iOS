@@ -20,8 +20,7 @@ swift_library(
         "//submodules/Components/BundleIconComponent",
         "//submodules/TelegramUI/Components/TextBadgeComponent",
         "//submodules/UIKitRuntimeUtils",
-        "//submodules/TelegramUI/Components/LiquidLens",
-        "//submodules/AppBundle",
+        "//submodules/TelegramUI/Components/GlassImitation",
     ],
     visibility = [
         "//visibility:public",

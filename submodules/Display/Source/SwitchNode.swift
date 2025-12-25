@@ -1,19 +1,11 @@
 import Foundation
 import UIKit
 import AsyncDisplayKit
-
-private final class SwitchNodeViewLayer: CALayer {
-    override func setNeedsDisplay() {
-    }
-}
+import GlassImitation
 
 private final class SwitchNodeView: UISwitch {
     override class var layerClass: AnyClass {
-        if #available(iOS 26.0, *) {
-            return super.layerClass
-        } else {
-            return SwitchNodeViewLayer.self
-        }
+        return super.layerClass
     }
 }
 
@@ -64,7 +56,11 @@ open class SwitchNode: ASDisplayNode {
         super.init()
         
         self.setViewBlock({
-            return SwitchNodeView()
+            if #available(iOS 26.0, *) {
+                return SwitchNodeView()
+            } else {
+                return GlassSwitcher(offset: CGPoint(x: -12 , y: 2.0))
+            }
         })
     }
     
@@ -90,11 +86,7 @@ open class SwitchNode: ASDisplayNode {
     }
     
     override open func calculateSizeThatFits(_ constrainedSize: CGSize) -> CGSize {
-        if #available(iOS 26.0, *) {
-            return CGSize(width: 63.0, height: 28.0)
-        } else {
-            return CGSize(width: 51.0, height: 31.0)
-        }
+        return CGSize(width: 63.0, height: 28.0)
     }
     
     @objc func switchValueChanged(_ view: UISwitch) {

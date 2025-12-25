@@ -28,7 +28,16 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
     private var theme: PresentationTheme
     private var dateTimeFormat: PresentationDateTimeFormat
     private let isChatRotated: Bool
-    
+
+    var textureSourceView: UIView? {
+        didSet {
+            self.reactionsButton.textureSourceView = self.textureSourceView
+            self.mentionsButton.textureSourceView = self.textureSourceView
+            self.downButton.textureSourceView = self.textureSourceView
+            self.upButton.textureSourceView = self.textureSourceView
+        }
+    }
+
     let reactionsButton: ChatHistoryNavigationButtonNode
     let mentionsButton: ChatHistoryNavigationButtonNode
     let downButton: ChatHistoryNavigationButtonNode

@@ -6,6 +6,7 @@ import ComponentDisplayAdapters
 import UIKitRuntimeUtils
 import CoreImage
 import AppBundle
+import GlassImitation
 
 private final class ContentContainer: UIView {
     private let maskContentView: UIView
@@ -302,18 +303,20 @@ public class GlassBackgroundView: UIView {
     }
     
     private let backgroundNode: NavigationBackgroundNode?
-    
+
     private let nativeView: UIVisualEffectView?
     private let nativeViewClippingContext: ClippingShapeContext?
     private let nativeParamsView: EffectSettingsContainerView?
-    
+
     private let foregroundView: UIImageView?
     private let shadowView: UIImageView?
-    
+
+    public let metalGlassView: GlassView?
+
     private let maskContainerView: UIView
     public let maskContentView: UIView
     private let contentContainer: ContentContainer
-    
+
     private var innerBackgroundView: UIView?
     
     public var contentView: UIView {
@@ -325,50 +328,71 @@ public class GlassBackgroundView: UIView {
     }
     
     public private(set) var params: Params?
-        
+
     public static var useCustomGlassImpl: Bool = false
-    
-    public override init(frame: CGRect) {
+
+    public convenience override init(frame: CGRect) {
+        self.init(frame: frame, useMetalGlass: false)
+    }
+
+    public init(frame: CGRect, useMetalGlass: Bool) {
         if #available(iOS 26.0, *), !GlassBackgroundView.useCustomGlassImpl {
             self.backgroundNode = nil
-            
+            self.metalGlassView = nil
+
             let glassEffect = UIGlassEffect(style: .regular)
             glassEffect.isInteractive = false
             let nativeView = UIVisualEffectView(effect: glassEffect)
             self.nativeViewClippingContext = ClippingShapeContext(view: nativeView)
             self.nativeView = nativeView
-            
+
             let nativeParamsView = EffectSettingsContainerView(frame: CGRect())
             self.nativeParamsView = nativeParamsView
-            
+
             nativeParamsView.addSubview(nativeView)
-            
+
             self.foregroundView = nil
             self.shadowView = nil
+        } else if useMetalGlass {
+            self.backgroundNode = nil
+            self.nativeView = nil
+            self.nativeViewClippingContext = nil
+            self.nativeParamsView = nil
+            self.foregroundView = nil
+            self.shadowView = nil
+
+            let glassView = GlassView(preset: .panelGlass, alwaysLiquid: true)
+            glassView.captureMethod = .drawHierarchy
+            glassView.startLiveAnimating()
+            self.metalGlassView = glassView
         } else {
+            self.metalGlassView = nil
             let backgroundNode = NavigationBackgroundNode(color: .black, enableBlur: true, customBlurRadius: 8.0)
             self.backgroundNode = backgroundNode
             self.nativeView = nil
             self.nativeViewClippingContext = nil
             self.nativeParamsView = nil
             self.foregroundView = UIImageView()
-            
             self.shadowView = UIImageView()
         }
-        
+
         self.maskContainerView = UIView()
         self.maskContainerView.backgroundColor = .white
         if let filter = CALayer.luminanceToAlpha() {
             self.maskContainerView.layer.filters = [filter]
         }
-        
+
         self.maskContentView = UIView()
         self.maskContainerView.addSubview(self.maskContentView)
-        
+
         self.contentContainer = ContentContainer(maskContentView: self.maskContentView)
-        
+
         super.init(frame: frame)
-        
+
+        if let metalGlassView = self.metalGlassView {
+            self.addSubview(metalGlassView)
+            metalGlassView.alpha = 1.0
+        }
         if let shadowView = self.shadowView {
             self.addSubview(shadowView)
         }
@@ -388,7 +412,51 @@ public class GlassBackgroundView: UIView {
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
+    public override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        if let metalGlassView = self.metalGlassView {
+            if self.superview != nil {
+                metalGlassView.startLiveAnimating()
+            } else {
+                metalGlassView.stopLiveAnimating()
+            }
+        }
+    }
+
+    public func setMetalGlassTextureSource(_ view: UIView?) {
+        self.metalGlassView?.textureSourceView = view
+    }
+
+    public func setMetalGlassCoordinator(_ coordinator: GlassViewRegistry?) {
+        if let coordinator = coordinator, let metalGlassView = self.metalGlassView {
+            metalGlassView.setCoordinator(coordinator)
+        }
+    }
+
+    public func setParticipatesInMerge(_ participates: Bool) {
+        self.metalGlassView?.participatesInMerge = participates
+    }
+
+    private var isHighlighted: Bool = false
+    public var highlightScale: Float = 1.4
+
+    public func setHighlighted(_ highlighted: Bool, animated: Bool = true) {
+        guard self.isHighlighted != highlighted else { return }
+        self.isHighlighted = highlighted
+
+        guard let metalGlassView = self.metalGlassView else { return }
+
+        metalGlassView.setHighlightScale(highlighted ? self.highlightScale : 1.0, animated: animated)
+    }
+
+    public func animateTap() {
+        self.layer.animateScale(from: 1.0, to: 1.1, duration: 0.1, removeOnCompletion: false, completion: { [weak self] _ in
+            self?.layer.animateScale(from: 1.1, to: 1.0, duration: 0.15, removeOnCompletion: false)
+        })
+        self.metalGlassView?.animateSpeedPulse(to: 0.2, duration: 0.2)
+    }
+
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let nativeView = self.nativeView {
             if let result = nativeView.hitTest(self.convert(point, to: nativeView), with: event) {
@@ -419,12 +487,21 @@ public class GlassBackgroundView: UIView {
         }
         if let backgroundNode = self.backgroundNode {
             backgroundNode.updateColor(color: .clear, forceKeepBlur: tintColor.color.alpha != 1.0, transition: transition.containedViewLayoutTransition)
-            
+
             switch shape {
             case let .roundedRect(cornerRadius):
                 backgroundNode.update(size: size, cornerRadius: cornerRadius, transition: transition.containedViewLayoutTransition)
             }
             transition.setFrame(view: backgroundNode.view, frame: CGRect(origin: CGPoint(), size: size))
+        }
+        if let metalGlassView = self.metalGlassView {
+            let cornerRadius: Float
+            switch shape {
+            case let .roundedRect(cr):
+                cornerRadius = Float(cr)
+            }
+            metalGlassView.parameters = metalGlassView.parameters.withCornerRadius(cornerRadius).withOverlayColor(tintColor.color)
+            transition.setFrame(view: metalGlassView, frame: CGRect(origin: CGPoint(), size: size))
         }
         
         let shadowInset: CGFloat = 32.0
@@ -501,7 +578,7 @@ public class GlassBackgroundView: UIView {
                         let glassEffect = UIGlassEffect(style: .regular)
                         switch tintColor.kind {
                         case .panel:
-                            glassEffect.tintColor = UIColor(white: isDark ? 0.0 : 1.0, alpha: 0.1)
+                            glassEffect.tintColor = nil
                         case .custom:
                             glassEffect.tintColor = tintColor.color
                         }
@@ -519,8 +596,8 @@ public class GlassBackgroundView: UIView {
                             nativeParamsView.lumaMin = 0.0
                             nativeParamsView.lumaMax = 0.15
                         } else {
-                            nativeParamsView.lumaMin = 0.6
-                            nativeParamsView.lumaMax = 0.61
+                            nativeParamsView.lumaMin = 0.25
+                            nativeParamsView.lumaMax = 1.0
                         }
                     }
                 }
@@ -609,8 +686,8 @@ public final class GlassBackgroundContainerView: UIView {
                 nativeParamsView.lumaMin = 0.0
                 nativeParamsView.lumaMax = 0.15
             } else {
-                nativeParamsView.lumaMin = 0.6
-                nativeParamsView.lumaMax = 0.61
+                nativeParamsView.lumaMin = 0.25
+                nativeParamsView.lumaMax = 1.0
             }
             
             transition.setFrame(view: nativeView, frame: CGRect(origin: CGPoint(), size: size))

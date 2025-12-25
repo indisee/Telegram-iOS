@@ -490,6 +490,7 @@ swift_library(
         "//submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode",
         "//submodules/ContactsHelper",
         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+        "//submodules/TelegramUI/Components/GlassImitation",
         "//submodules/TelegramUI/Components/Chat/ChatInputAccessoryPanel",
         "//submodules/TelegramUI/Components/Chat/ChatInputMessageAccessoryPanel",
         "//submodules/TelegramUI/Components/Chat/ChatRecordingViewOnceButtonNode",

@@ -14,6 +14,7 @@ swift_library(
         "//submodules/TelegramPresentationData",
         "//submodules/ComponentFlow",
         "//submodules/TelegramUI/Components/GlassBackgroundComponent",
+        "//submodules/TelegramUI/Components/GlassImitation",
         "//submodules/TelegramUI/Components/PlainButtonComponent",
         "//submodules/Components/BundleIconComponent",
         "//submodules/Components/MultilineTextComponent",
